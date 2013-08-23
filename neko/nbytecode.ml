@@ -269,16 +269,25 @@ let write_debug_infos ch files inf =
 	) inf;
 	flush_repeat(!curpos)
 
+let is_at_least_version min =
+	Array.fold_left (fun a b -> a || (match b with
+		| GlobalVersion v -> v >= min | _ -> false)) false
+
 let write ch (globals,ops) =
 	IO.nwrite ch "NEKO";
 	let ids , pos , csize = code_tables ops in
 	IO.write_i32 ch (Array.length globals);
 	IO.write_i32 ch (Array.length ids);
 	IO.write_i32 ch csize;
+	let abi3 = is_at_least_version 3 globals in
 	Array.iter (fun x ->
 		match x with
 		| GlobalVar s -> IO.write_byte ch 1; IO.write_string ch s
-		| GlobalFunction (p,nargs) -> IO.write_byte ch 2; IO.write_i32 ch (pos.(p) lor (nargs lsl 24))
+		| GlobalFunction (p,nargs) -> IO.write_byte ch 2;
+			if abi3 then begin
+				IO.write_i32 ch pos.(p); IO.write_i32 ch nargs
+			end else
+				IO.write_i32 ch (pos.(p) lor (nargs lsl 24))
 		| GlobalString s -> IO.write_byte ch 3; IO.write_ui16 ch (String.length s); IO.nwrite ch s
 		| GlobalFloat s -> IO.write_byte ch 4; IO.write_string ch s
 		| GlobalDebug (files,inf) -> IO.write_byte ch 5; write_debug_infos ch files inf;
